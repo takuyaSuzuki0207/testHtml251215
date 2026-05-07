@@ -1,1 +1,221 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"/><link rel="icon" href="/favicon.ico"/><meta name="viewport" content="width=device-width,initial-scale=1"/><meta name="theme-color" content="#000000"/><meta name="description" content="Web site created using create-react-app"/><link rel="apple-touch-icon" href="/logo192.png"/><link rel="manifest" href="/manifest.json"/><title>React App</title><script defer="defer" src="/static/js/main.79beac67.js"></script><link href="/static/css/main.f855e6bc.css" rel="stylesheet"></head><body><noscript>You need to enable JavaScript to run this app.</noscript><div id="root"></div></body></html>
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>早押しクイズ</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    body { background: #f8fafc; font-family: 'Segoe UI', 'Yu Gothic', sans-serif; margin: 0; min-height: 100vh;}
+    .container { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh;}
+    .question-card { background: #fff; box-shadow: 0 4px 24px rgba(0,0,0,0.08); border-radius: 24px; padding: 48px 36px; font-size: 2.4em; color: #1e293b; margin-bottom: 40px; text-align: center; min-width: 400px; max-width: 80vw; transition: box-shadow 0.2s; letter-spacing: 0.05em;}
+    .answer-card { background: #f3f4f6; box-shadow: 0 2px 12px rgba(0,0,0,0.06); border-radius: 18px; padding: 24px 36px; font-size: 1.5em; color: #334155; margin-top: 24px; min-width: 200px; max-width: 70vw; text-align: center; font-weight: bold; display: none; letter-spacing: 0.04em; opacity: 0.95;}
+    .buzzer-history { position: fixed; top: 32px; right: 32px; z-index: 10; display: flex; flex-direction: column; gap: 12px; align-items: flex-end; min-width: 180px;}
+    .buzzer-card { color: #fff; border-radius: 18px; padding: 18px 32px; font-size: 1.4em; box-shadow: 0 2px 12px rgba(59,130,246,0.13); min-width: 170px; text-align: center; opacity: 0.97; animation: pop 0.5s; font-weight: bold; letter-spacing: 0.05em; background: #3b82f6;}
+    .buzzer-card.small { font-size: 0.95em; padding: 8px 16px; min-width: 90px; font-weight: normal; opacity: 0.8; animation: popSmall 0.5s;}
+    @keyframes pop { 0% { transform: scale(0.7); opacity: 0.2;} 80% { transform: scale(1.08); opacity: 1;} 100% { transform: scale(1);}
+    }
+    @keyframes popSmall { 0% { transform: scale(0.7); opacity: 0.1;} 80% { transform: scale(1.08); opacity: 0.8;} 100% { transform: scale(1);}
+    }
+    .result-card { margin-top: 32px; font-size: 3.5em; font-weight: bold; height: 1.2em; min-width: 120px; display: flex; align-items: center; justify-content: center; transition: color 0.2s;}
+    .result-card.correct { color: #22c55e; text-shadow: 0 2px 12px #22c55e44; animation: correctPop 0.4s;}
+    .result-card.wrong { color: #ef4444; text-shadow: 0 2px 12px #ef444444; animation: wrongPop 0.4s;}
+    @keyframes correctPop { 0% { transform: scale(0.7);} 80% { transform: scale(1.13);} 100% { transform: scale(1);}
+    }
+    @keyframes wrongPop { 0% { transform: scale(0.7);} 80% { transform: scale(1.13);} 100% { transform: scale(1);}
+    }
+    .hint { margin-top: 10px; color: #64748b; font-size: 1em; opacity: 0.85;}
+    .footer { position: fixed; bottom: 16px; left: 0; width: 100vw; text-align: center; color: #94a3b8; font-size: 0.9em; letter-spacing: 0.08em; opacity: 0.7;}
+    @media (max-width: 600px) { .question-card { font-size: 1.2em; min-width: 180px; padding: 22px 8px;} .buzzer-card { font-size: 1em; min-width: 90px; padding: 9px 12px;} .buzzer-history { min-width: 90px; gap: 7px;} .result-card { font-size: 2em; min-width: 60px;} .answer-card { font-size: 1em; min-width: 80px; padding: 10px 8px;}
+    }
+    .speed-control { margin-bottom: 10px; font-size: 1em; color: #334155; background: #e0e7ef; border-radius: 8px; padding: 7px 15px; display: inline-block;}
+    .speed-control label { margin-right: 8px; font-weight: bold;}
+    .speed-control input { width: 60px; font-size: 1em; text-align: right;}
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="speed-control">
+      <label for="speed">表示スピード(ms/文字):</label>
+      <input type="number" id="speed" value="180" min="10" max="1000" step="10">
+    </div>
+    <div class="question-card" id="question">問題文がここに出ます</div>
+    <div class="result-card" id="result"></div>
+    <div class="answer-card" id="answer"></div>
+    <div class="hint">A:たろう / S:はなこ / D:じろう / F:さぶろう<br>O:正解 / X:不正解 / →:次の問題</div>
+  </div>
+  <div class="buzzer-history" id="buzzerHistory"></div>
+  <div class="footer">早押しクイズ</div>
+  <script>
+	// プレイヤー設定を一元化
+	const playerList = [
+	  { key: "a", name: "たろう", color: "#f59e42" },
+	  { key: "s", name: "はなこ", color: "#ec4899" },
+	  { key: "d", name: "じろう", color: "#10b981" }
+	];
+	const players = Object.fromEntries(playerList.map(p => [p.key, p.name]));
+	const playerColors = Object.fromEntries(playerList.map(p => [p.name, p.color]));
+
+	// 表示スピードを一元管理
+	let displaySpeed = 180;
+	document.getElementById("speed").value = displaySpeed;
+	document.getElementById("speed").addEventListener("input", function() {
+	  displaySpeed = Math.max(10, parseInt(this.value) || 180);
+	});
+
+    const questions = [
+      { q: "日本の首都はどこ？", a: "東京" },
+      { q: "1+1は？", a: "2" },
+      { q: "富士山の高さは約何メートル？", a: "3776メートル" }
+    ];
+    let current = 0;
+
+    let buzzered = false;
+    let buzzerName = "";
+    let buzzerHistory = [];
+    let answerShown = false;
+    let waitingNext = false;
+
+    let typingTimeouts = [];
+    let typingPaused = false;
+    let typingIndex = 0;
+    let typingText = "";
+
+    document.getElementById("speed").addEventListener("input", function() {
+      displaySpeed = Math.max(10, parseInt(this.value) || 80);
+    });
+
+    function showQuestion() {
+      typingTimeouts.forEach(clearTimeout);
+      typingTimeouts = [];
+      typingPaused = false;
+      typingIndex = 0;
+      typingText = questions[current].q;
+
+      const questionDiv = document.getElementById("question");
+      questionDiv.textContent = "";
+      typeChar();
+
+      document.getElementById("result").textContent = "";
+      document.getElementById("result").className = "result-card";
+      document.getElementById("answer").style.display = "none";
+      buzzered = false;
+      buzzerName = "";
+      buzzerHistory = [];
+      answerShown = false;
+      waitingNext = false;
+      updateBuzzerHistory();
+    }
+
+    function typeChar() {
+      const questionDiv = document.getElementById("question");
+      if (typingIndex <= typingText.length) {
+        questionDiv.textContent = typingText.slice(0, typingIndex);
+        if (typingIndex < typingText.length && !typingPaused) {
+          typingTimeouts.push(setTimeout(typeChar, displaySpeed));
+        }
+        typingIndex++;
+      }
+    }
+
+    function pauseTyping() {
+      typingPaused = true;
+      typingTimeouts.forEach(clearTimeout);
+      typingTimeouts = [];
+    }
+
+    function resumeTyping() {
+      if (!typingPaused || typingIndex > typingText.length) return;
+      typingPaused = false;
+      typeChar();
+    }
+
+    function showFullText() {
+      typingPaused = true;
+      typingTimeouts.forEach(clearTimeout);
+      typingTimeouts = [];
+      typingIndex = typingText.length + 1;
+      document.getElementById("question").textContent = typingText;
+    }
+
+    showQuestion();
+
+    document.addEventListener("keydown", function(event) {
+      const key = event.key.toLowerCase();
+      // 早押し
+      if (!answerShown && players[key]) {
+        const name = players[key];
+        if (!buzzerHistory.includes(name)) {
+          buzzerHistory.push(name);
+          updateBuzzerHistory();
+        }
+        // buzzeredがfalseなら早押し判定
+        if (!buzzered && buzzerHistory.length >= 1) {
+          buzzered = true;
+          buzzerName = name;
+          pauseTyping();
+        }
+      }
+      // Oキーで正解
+      if (!answerShown && key === "o" && buzzered) {
+        const resultDiv = document.getElementById("result");
+        resultDiv.textContent = "〇";
+        resultDiv.className = "result-card correct";
+        showFullText();
+        showAnswer();
+        answerShown = true;
+        waitingNext = true;
+      }
+      // Xキーで不正解
+      if (!answerShown && key === "x" && buzzered) {
+        const resultDiv = document.getElementById("result");
+        resultDiv.textContent = "×";
+        resultDiv.className = "result-card wrong";
+        buzzered = false; // ←ここが重要！
+        buzzerHistory = [];           // ← これを追加
+		updateBuzzerHistory();        // ← これも追加
+        resumeTyping();
+        // answerShownはfalseのまま
+        waitingNext = true;
+      }
+      // 右矢印キーで次の問題へ
+      if (answerShown && (event.key === "ArrowRight" || key === "→")) {
+        nextQuestion();
+      }
+    });
+
+    function updateBuzzerHistory() {
+      const historyDiv = document.getElementById("buzzerHistory");
+      historyDiv.innerHTML = "";
+      buzzerHistory.forEach((name, i) => {
+        const card = document.createElement("div");
+        card.className = "buzzer-card" + (i === 0 ? "" : " small");
+        card.textContent = (i+1) + ". " + name + (i === 0 ? " さんが早押し！" : "");
+        card.style.background = playerColors[name] || "#3b82f6";
+        historyDiv.appendChild(card);
+      });
+    }
+
+    function showAnswer() {
+      answerShown = true;
+      waitingNext = true;
+      const answerDiv = document.getElementById("answer");
+      answerDiv.textContent = "答え: " + questions[current].a;
+      answerDiv.style.display = "block";
+    }
+
+    function nextQuestion() {
+      current++;
+      if (current < questions.length) {
+        showQuestion();
+      } else {
+        typingTimeouts.forEach(clearTimeout);
+        document.getElementById("question").textContent = "終了！";
+        document.getElementById("result").textContent = "";
+        document.getElementById("result").className = "result-card";
+        document.getElementById("answer").style.display = "none";
+        document.getElementById("buzzerHistory").innerHTML = "";
+      }
+    }
+  </script>
+</body>
+</html>
